@@ -9,7 +9,6 @@ import (
 	"time"
 )
 
-// ErrNotFound is returned by Get, Delete, and Stat when key does not exist.
 var ErrNotFound = errors.New("object not found")
 
 // ObjectInfo describes a stored object without its contents.
