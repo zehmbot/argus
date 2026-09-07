@@ -44,24 +44,27 @@ func main() {
 		os.Exit(exitConfig)
 	}
 
+	ctx := context.Background()
+
 	switch os.Args[1] {
 	case "version":
 		fmt.Println(version)
 
 	case "backup":
-		// ContinueOnError rather than ExitOnError: flag's own exit code is 2,
-		// which this tool has already spent on "backup failed". A malformed
-		// command line is a configuration error.
-		fs := flag.NewFlagSet("backup", flag.ContinueOnError)
-		configPath := fs.String("config", "argus.yaml", "path to the argus config file")
+		fs, configPath := commandFlags("backup")
+		parseFlags(fs)
 
-		if err := fs.Parse(os.Args[2:]); err != nil {
-			os.Exit(exitConfig)
+		if err := runBackup(ctx, *configPath); err != nil {
+			fail(err)
 		}
 
-		if err := runBackup(context.Background(), *configPath); err != nil {
-			fmt.Fprintln(os.Stderr, "argus:", err)
-			os.Exit(exitCodeFor(err))
+	case "list":
+		fs, configPath := commandFlags("list")
+		asJSON := fs.Bool("json", false, "print the manifests as JSON")
+		parseFlags(fs)
+
+		if err := runList(ctx, *configPath, *asJSON, os.Stdout); err != nil {
+			fail(err)
 		}
 
 	default:
@@ -70,11 +73,34 @@ func main() {
 	}
 }
 
+// commandFlags builds the flag set every command shares.
+func commandFlags(name string) (*flag.FlagSet, *string) {
+	// ContinueOnError rather than ExitOnError: flag's own exit code is 2,
+	// which this tool has already spent on "backup failed". A malformed
+	// command line is a configuration error.
+	fs := flag.NewFlagSet(name, flag.ContinueOnError)
+	configPath := fs.String("config", "argus.yaml", "path to the argus config file")
+
+	return fs, configPath
+}
+
+func parseFlags(fs *flag.FlagSet) {
+	if err := fs.Parse(os.Args[2:]); err != nil {
+		os.Exit(exitConfig)
+	}
+}
+
+func fail(err error) {
+	fmt.Fprintln(os.Stderr, "argus:", err)
+	os.Exit(exitCodeFor(err))
+}
+
 func usage() {
 	fmt.Fprint(os.Stderr, `usage: argus <command> [flags]
 
 commands:
-  backup [--config argus.yaml]   back up the configured database
-  version                        print the argus version
+  backup [--config argus.yaml]          back up the configured database
+  list   [--config argus.yaml] [--json] list the backups in storage
+  version                               print the argus version
 `)
 }
