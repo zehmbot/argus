@@ -1,3 +1,7 @@
 /argus
 /argus.exe
 *.exe
+
+# Local config and backups written by a local run.
+/argus.yaml
+/argus-data/

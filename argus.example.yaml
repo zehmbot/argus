@@ -1,0 +1,6 @@
+# Copy to argus.yaml and edit. The database connection string is NOT here:
+# it is read from the ARGUS_DATABASE_URL environment variable, so that a
+# password can never be committed to version control.
+storage:
+  local:
+    path: ./argus-data
