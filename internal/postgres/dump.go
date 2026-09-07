@@ -38,3 +38,38 @@ func Dump(ctx context.Context, dsn, outputPath string) error {
 
 	return nil
 }
+
+// DumpVersion returns the version of the pg_dump binary on PATH, such as
+// "17.11". The manifest records it because a custom-format dump can only be
+// read back by a pg_restore of the same major version or newer, so verify
+// needs to know which binary produced it.
+func DumpVersion(ctx context.Context) (string, error) {
+	cmd := exec.CommandContext(ctx, "pg_dump", "--version")
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("pg_dump --version: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+
+	version, err := parseDumpVersion(stdout.String())
+	if err != nil {
+		return "", fmt.Errorf("pg_dump --version: %w", err)
+	}
+
+	return version, nil
+}
+
+// parseDumpVersion pulls the version out of pg_dump's banner, which reads
+// "pg_dump (PostgreSQL) 17.11" and on packaged builds carries a distribution
+// suffix after it.
+func parseDumpVersion(banner string) (string, error) {
+	fields := strings.Fields(banner)
+	if len(fields) < 3 || fields[0] != "pg_dump" {
+		return "", fmt.Errorf("unexpected version output %q", strings.TrimSpace(banner))
+	}
+
+	return fields[2], nil
+}
