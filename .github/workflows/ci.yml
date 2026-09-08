@@ -19,3 +19,37 @@ jobs:
       - run: go build ./...
 
       - run: go test ./...
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.x'
+
+      # argus shells out to pg_dump, and pg_dump refuses to dump a server
+      # newer than itself, so the client has to be at least as new as the
+      # image the tests start.
+      #
+      # /usr/bin/pg_dump is pg_wrapper, which picks a version of its own
+      # accord and keeps choosing the client already on the runner. Putting
+      # the versioned directory first bypasses the wrapper entirely.
+      - name: Install PostgreSQL 17 client
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+
+      # Fail loudly here rather than inside a test if the wrong client wins.
+      - name: Check pg_dump version
+        run: |
+          which pg_dump
+          pg_dump --version
+          pg_dump --version | grep -q ' 17\.' || { echo "expected a PostgreSQL 17 pg_dump"; exit 1; }
+
+      - run: make test-integration
