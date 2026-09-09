@@ -8,7 +8,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const sourceDSNEnvVar = "ARGUS_DATABASE_URL"
+// Every secret is read from the environment, never from the config file.
+// The ARGUS_ prefix is deliberate: argus often runs on a host that already
+// has credentials set for something else, and silently picking those up is
+// how a backup ends up in the wrong account.
+const (
+	sourceDSNEnvVar   = "ARGUS_DATABASE_URL"
+	s3AccessKeyEnvVar = "ARGUS_S3_ACCESS_KEY_ID"
+	s3SecretKeyEnvVar = "ARGUS_S3_SECRET_ACCESS_KEY"
+)
 
 // Config is the root of argus.yaml. Only the fields the current phase needs
 // exist here; S3 and retention settings are added as later phases need them.
@@ -19,10 +27,24 @@ type Config struct {
 
 type StorageConfig struct {
 	Local *LocalStorageConfig `yaml:"local"`
+	S3    *S3StorageConfig    `yaml:"s3"`
 }
 
 type LocalStorageConfig struct {
 	Path string `yaml:"path"`
+}
+
+// S3StorageConfig describes an S3-compatible bucket. The access keys are not
+// here: they come from the environment, because this file gets committed.
+//
+// Insecure rather than a use_ssl flag, so that the zero value is the safe
+// one: leaving it out gives TLS, and turning it off has to be deliberate.
+// Only a local MinIO should ever need it.
+type S3StorageConfig struct {
+	Endpoint string `yaml:"endpoint"`
+	Bucket   string `yaml:"bucket"`
+	Region   string `yaml:"region"`
+	Insecure bool   `yaml:"insecure"`
 }
 
 // EncryptionConfig names the age recipient that artifacts are encrypted to.
@@ -81,12 +103,8 @@ func (c *Config) Recipient() (age.Recipient, error) {
 }
 
 func (c *Config) validate() error {
-	if c.Storage.Local == nil {
-		return fmt.Errorf("storage.local is required")
-	}
-
-	if c.Storage.Local.Path == "" {
-		return fmt.Errorf("storage.local.path is required")
+	if err := c.Storage.validate(); err != nil {
+		return err
 	}
 
 	if c.Encryption != nil {
@@ -98,6 +116,49 @@ func (c *Config) validate() error {
 		// after pg_dump has already spent an hour on a large database.
 		if _, err := c.Recipient(); err != nil {
 			return err
+		}
+	}
+
+	return nil
+}
+
+// S3Credentials returns the S3 access key pair from the environment.
+func S3Credentials() (accessKeyID, secretAccessKey string, err error) {
+	accessKeyID = os.Getenv(s3AccessKeyEnvVar)
+	if accessKeyID == "" {
+		return "", "", fmt.Errorf("%s environment variable is not set", s3AccessKeyEnvVar)
+	}
+
+	secretAccessKey = os.Getenv(s3SecretKeyEnvVar)
+	if secretAccessKey == "" {
+		return "", "", fmt.Errorf("%s environment variable is not set", s3SecretKeyEnvVar)
+	}
+
+	return accessKeyID, secretAccessKey, nil
+}
+
+// validate requires exactly one backend. Neither leaves backups nowhere to
+// go; both would make it ambiguous which one holds the history, and a backup
+// tool that is vague about where its backups are is worse than useless.
+func (s StorageConfig) validate() error {
+	switch {
+	case s.Local == nil && s.S3 == nil:
+		return fmt.Errorf("one of storage.local or storage.s3 is required")
+
+	case s.Local != nil && s.S3 != nil:
+		return fmt.Errorf("only one of storage.local or storage.s3 may be set")
+
+	case s.Local != nil:
+		if s.Local.Path == "" {
+			return fmt.Errorf("storage.local.path is required")
+		}
+
+	case s.S3 != nil:
+		if s.S3.Endpoint == "" {
+			return fmt.Errorf("storage.s3.endpoint is required")
+		}
+		if s.S3.Bucket == "" {
+			return fmt.Errorf("storage.s3.bucket is required")
 		}
 	}
 

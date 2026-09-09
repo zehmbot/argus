@@ -10,7 +10,6 @@ import (
 	"github.com/zehmbot/argus/internal/config"
 	"github.com/zehmbot/argus/internal/manifest"
 	"github.com/zehmbot/argus/internal/postgres"
-	"github.com/zehmbot/argus/internal/storage/local"
 )
 
 // runList prints the backups recorded in storage, newest first.
@@ -34,9 +33,9 @@ func runList(ctx context.Context, configPath string, asJSON bool, out io.Writer)
 		return fmt.Errorf("%w: %w", errConfig, err)
 	}
 
-	backend, err := local.New(cfg.Storage.Local.Path)
+	backend, err := openBackend(ctx, cfg)
 	if err != nil {
-		return fmt.Errorf("%w: opening storage: %w", errStorage, err)
+		return err
 	}
 
 	manifests, err := manifest.List(ctx, backend, conn.Database)

@@ -1,9 +1,24 @@
-# Copy to argus.yaml and edit. The database connection string is NOT here:
-# it is read from the ARGUS_DATABASE_URL environment variable, so that a
-# password can never be committed to version control.
+# Copy to argus.yaml and edit. Secrets are NOT in this file: the database
+# connection string and the object storage keys are read from environment
+# variables, so that this file can be committed safely.
+#
+#   ARGUS_DATABASE_URL           postgres://user:password@host:5432/dbname
+#   ARGUS_S3_ACCESS_KEY_ID       only needed with storage.s3
+#   ARGUS_S3_SECRET_ACCESS_KEY   only needed with storage.s3
+
+# Exactly one storage backend.
 storage:
   local:
     path: ./argus-data
+
+  # s3:
+  #   endpoint: s3.eu-central-1.amazonaws.com
+  #   bucket: argus-backups
+  #   region: eu-central-1
+  #
+  #   Any S3-compatible store works: Backblaze B2, Cloudflare R2, Scaleway,
+  #   or a local MinIO. Only a local MinIO should ever need `insecure: true`,
+  #   which turns TLS off; leaving it out keeps TLS on.
 
 # Optional. When present, artifacts are encrypted to this age recipient.
 #

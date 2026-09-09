@@ -171,3 +171,96 @@ func TestLoad_EncryptionInvalid(t *testing.T) {
 		})
 	}
 }
+
+func TestLoad_S3(t *testing.T) {
+	path := writeConfig(t, "storage:\n  s3:\n    endpoint: s3.eu-central-1.amazonaws.com\n    bucket: argus-backups\n    region: eu-central-1\n")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.Storage.S3 == nil {
+		t.Fatal("Storage.S3 = nil, want the parsed block")
+	}
+	if cfg.Storage.S3.Bucket != "argus-backups" {
+		t.Errorf("Bucket = %q, want %q", cfg.Storage.S3.Bucket, "argus-backups")
+	}
+	if cfg.Storage.S3.Endpoint != "s3.eu-central-1.amazonaws.com" {
+		t.Errorf("Endpoint = %q, want %q", cfg.Storage.S3.Endpoint, "s3.eu-central-1.amazonaws.com")
+	}
+
+	// Omitting the flag must mean TLS. A backup tool that silently talks
+	// plaintext to a remote bucket because a field was left out is a bug.
+	if cfg.Storage.S3.Insecure {
+		t.Error("Insecure = true by default, want TLS unless explicitly disabled")
+	}
+}
+
+func TestLoad_StorageBackendSelection(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "neither backend",
+			body: "storage: {}\n",
+		},
+		{
+			name: "both backends",
+			body: "storage:\n  local:\n    path: /var/lib/argus\n  s3:\n    endpoint: e\n    bucket: b\n",
+		},
+		{
+			name: "s3 without endpoint",
+			body: "storage:\n  s3:\n    bucket: argus-backups\n",
+		},
+		{
+			name: "s3 without bucket",
+			body: "storage:\n  s3:\n    endpoint: s3.amazonaws.com\n",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := Load(writeConfig(t, tc.body)); err == nil {
+				t.Error("Load() error = nil, want error")
+			}
+		})
+	}
+}
+
+func TestS3Credentials(t *testing.T) {
+	t.Setenv("ARGUS_S3_ACCESS_KEY_ID", "AKIAEXAMPLE")
+	t.Setenv("ARGUS_S3_SECRET_ACCESS_KEY", "s3cret")
+
+	id, secret, err := S3Credentials()
+	if err != nil {
+		t.Fatalf("S3Credentials() error = %v", err)
+	}
+	if id != "AKIAEXAMPLE" || secret != "s3cret" {
+		t.Errorf("S3Credentials() = %q, %q, want %q, %q", id, secret, "AKIAEXAMPLE", "s3cret")
+	}
+}
+
+func TestS3Credentials_Missing(t *testing.T) {
+	cases := []struct {
+		name   string
+		id     string
+		secret string
+	}{
+		{name: "neither set"},
+		{name: "only id set", id: "AKIAEXAMPLE"},
+		{name: "only secret set", secret: "s3cret"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("ARGUS_S3_ACCESS_KEY_ID", tc.id)
+			t.Setenv("ARGUS_S3_SECRET_ACCESS_KEY", tc.secret)
+
+			if _, _, err := S3Credentials(); err == nil {
+				t.Error("S3Credentials() error = nil, want error")
+			}
+		})
+	}
+}
