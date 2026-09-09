@@ -18,7 +18,6 @@ import (
 	"github.com/zehmbot/argus/internal/pipeline"
 	"github.com/zehmbot/argus/internal/postgres"
 	"github.com/zehmbot/argus/internal/storage"
-	"github.com/zehmbot/argus/internal/storage/local"
 )
 
 // runBackup dumps the configured database, compresses and optionally
@@ -50,9 +49,9 @@ func runBackup(ctx context.Context, configPath string) error {
 		return fmt.Errorf("%w: %w", errConfig, err)
 	}
 
-	backend, err := local.New(cfg.Storage.Local.Path)
+	backend, err := openBackend(ctx, cfg)
 	if err != nil {
-		return fmt.Errorf("%w: opening storage: %w", errStorage, err)
+		return err
 	}
 
 	backupID, err := manifest.NewID(start)
