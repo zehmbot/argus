@@ -34,7 +34,7 @@ func storeManifest(t *testing.T, backend storage.Backend, database, backupID str
 	m.BackupID = backupID
 	m.CreatedAt = createdAt
 	m.Source.Database = database
-	m.Artifact.ObjectKey = ArtifactKey(database, backupID)
+	m.Artifact.ObjectKey = ArtifactKey(database, backupID, false)
 
 	if err := Write(context.Background(), backend, m); err != nil {
 		t.Fatalf("Write() error = %v", err)
@@ -117,7 +117,7 @@ func TestList_IgnoresArtifacts(t *testing.T) {
 
 	// The artifact lives under the same prefix and is not JSON; listing
 	// must skip it rather than try to decode it.
-	artifact := ArtifactKey(database, backupID)
+	artifact := ArtifactKey(database, backupID, false)
 	if err := backend.Put(context.Background(), artifact, strings.NewReader("not a manifest")); err != nil {
 		t.Fatalf("Put() error = %v", err)
 	}

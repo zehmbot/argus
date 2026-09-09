@@ -70,7 +70,8 @@ func runArgus(t *testing.T, env []string, args ...string) (string, int) {
 }
 
 // writeConfig writes a config file pointing storage at a fresh directory.
-func writeConfig(t *testing.T) (configPath, storageRoot string) {
+// An empty recipient leaves encryption unconfigured.
+func writeConfig(t *testing.T, recipient string) (configPath, storageRoot string) {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -80,6 +81,10 @@ func writeConfig(t *testing.T) (configPath, storageRoot string) {
 	// ToSlash because a Windows path's backslashes would be escape
 	// sequences to the YAML parser.
 	body := fmt.Sprintf("storage:\n  local:\n    path: %s\n", filepath.ToSlash(storageRoot))
+	if recipient != "" {
+		body += fmt.Sprintf("encryption:\n  recipient: %s\n", recipient)
+	}
+
 	if err := os.WriteFile(configPath, []byte(body), 0o600); err != nil {
 		t.Fatalf("writing config: %v", err)
 	}
