@@ -1,0 +1,4 @@
+# Keep line endings LF everywhere, including in the working tree on
+# Windows. Without this, core.autocrlf gives checked-out files CRLF and
+# gofmt reports correctly formatted files as unformatted.
+* text=auto eol=lf
