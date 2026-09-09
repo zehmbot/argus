@@ -15,11 +15,13 @@ import (
 	"testing"
 	"time"
 
+	"filippo.io/age"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/zehmbot/argus/internal/manifest"
+	"github.com/zehmbot/argus/internal/pipeline"
 	"github.com/zehmbot/argus/internal/storage/local"
 )
 
@@ -74,7 +76,7 @@ func startPostgres(t *testing.T) string {
 func TestBackupAndList(t *testing.T) {
 	ctx := context.Background()
 	dsn := startPostgres(t)
-	configPath, storageRoot := writeConfig(t)
+	configPath, storageRoot := writeConfig(t, "")
 	env := []string{"ARGUS_DATABASE_URL=" + dsn}
 
 	out, code := runArgus(t, env, "backup", "--config", configPath)
@@ -178,7 +180,7 @@ func TestBackupAndList(t *testing.T) {
 func TestBackupFailureLeavesNothing(t *testing.T) {
 	ctx := context.Background()
 	dsn := startPostgres(t)
-	configPath, storageRoot := writeConfig(t)
+	configPath, storageRoot := writeConfig(t, "")
 
 	unreachable := strings.Replace(dsn, "/app_production?", "/no_such_database?", 1)
 	if unreachable == dsn {
@@ -227,4 +229,107 @@ func gunzip(t *testing.T, b []byte) []byte {
 	}
 
 	return out
+}
+
+// TestBackupEncrypted covers the property the whole encryption design exists
+// for: the host that writes the backup cannot read it back.
+func TestBackupEncrypted(t *testing.T) {
+	ctx := context.Background()
+	dsn := startPostgres(t)
+
+	identity, err := age.GenerateX25519Identity()
+	if err != nil {
+		t.Fatalf("GenerateX25519Identity() error = %v", err)
+	}
+	recipient := identity.Recipient().String()
+
+	configPath, storageRoot := writeConfig(t, recipient)
+
+	out, code := runArgus(t, []string{"ARGUS_DATABASE_URL=" + dsn}, "backup", "--config", configPath)
+	if code != 0 {
+		t.Fatalf("argus backup exited %d:\n%s", code, out)
+	}
+
+	backend, err := local.New(storageRoot)
+	if err != nil {
+		t.Fatalf("local.New() error = %v", err)
+	}
+
+	manifests, err := manifest.List(ctx, backend, "app_production")
+	if err != nil {
+		t.Fatalf("manifest.List() error = %v", err)
+	}
+	if len(manifests) != 1 {
+		t.Fatalf("found %d manifests, want 1", len(manifests))
+	}
+
+	m := manifests[0]
+
+	if m.Artifact.EncryptionRecipient != recipient {
+		t.Errorf("EncryptionRecipient = %q, want %q", m.Artifact.EncryptionRecipient, recipient)
+	}
+	if !strings.HasSuffix(m.Artifact.ObjectKey, ".dump.gz.age") {
+		t.Errorf("ObjectKey = %q, want a .dump.gz.age suffix", m.Artifact.ObjectKey)
+	}
+
+	r, err := backend.Get(ctx, m.Artifact.ObjectKey)
+	if err != nil {
+		t.Fatalf("Get(%q) error = %v", m.Artifact.ObjectKey, err)
+	}
+	defer r.Close()
+
+	hash := sha256.New()
+	stored, err := io.ReadAll(io.TeeReader(r, hash))
+	if err != nil {
+		t.Fatalf("reading artifact: %v", err)
+	}
+
+	// The checksum must cover the encrypted bytes, so that a downloaded
+	// object can be checked for corruption without holding the key.
+	if int64(len(stored)) != m.Artifact.SizeBytes {
+		t.Errorf("artifact is %d bytes, manifest says %d", len(stored), m.Artifact.SizeBytes)
+	}
+	if got := hex.EncodeToString(hash.Sum(nil)); got != m.Artifact.SHA256 {
+		t.Errorf("artifact sha256 = %s, manifest says %s", got, m.Artifact.SHA256)
+	}
+
+	// What landed in storage is age, not gzip: encryption is the outer layer.
+	if !bytes.HasPrefix(stored, []byte("age-encryption.org/v1")) {
+		t.Fatalf("artifact does not begin with an age header: %q", firstBytes(stored, 32))
+	}
+	if len(stored) >= 2 && stored[0] == 0x1f && stored[1] == 0x8b {
+		t.Error("artifact is gzip, so it was stored unencrypted")
+	}
+
+	// With the identity, it is a real dump again.
+	decrypted, err := pipeline.Decrypt(bytes.NewReader(stored), identity)
+	if err != nil {
+		t.Fatalf("Decrypt() error = %v", err)
+	}
+
+	plaintext, err := io.ReadAll(decrypted)
+	if err != nil {
+		t.Fatalf("reading decrypted artifact: %v", err)
+	}
+
+	if dump := gunzip(t, plaintext); !strings.HasPrefix(string(dump), "PGDMP") {
+		t.Error("decrypted artifact is not a custom-format dump")
+	}
+
+	// Without it, nobody is reading this backup.
+	other, err := age.GenerateX25519Identity()
+	if err != nil {
+		t.Fatalf("GenerateX25519Identity() error = %v", err)
+	}
+	if _, err := pipeline.Decrypt(bytes.NewReader(stored), other); err == nil {
+		t.Error("Decrypt() with an unrelated identity succeeded, want failure")
+	}
+}
+
+func firstBytes(b []byte, n int) []byte {
+	if len(b) < n {
+		return b
+	}
+
+	return b[:n]
 }

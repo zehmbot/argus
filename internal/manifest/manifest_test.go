@@ -167,10 +167,24 @@ func TestKeys(t *testing.T) {
 		backupID = "2026-09-05T03-00-12Z-a3f9"
 	)
 
-	if got, want := ArtifactKey(database, backupID), "backups/app_production/2026-09-05T03-00-12Z-a3f9.dump.gz"; got != want {
+	if got, want := ArtifactKey(database, backupID, false), "backups/app_production/2026-09-05T03-00-12Z-a3f9.dump.gz"; got != want {
 		t.Errorf("ArtifactKey() = %q, want %q", got, want)
 	}
 	if got, want := ManifestKey(database, backupID), "backups/app_production/2026-09-05T03-00-12Z-a3f9.json"; got != want {
 		t.Errorf("ManifestKey() = %q, want %q", got, want)
+	}
+}
+
+func TestArtifactKey_Encrypted(t *testing.T) {
+	const (
+		database = "app_production"
+		backupID = "2026-09-05T03-00-12Z-a3f9"
+	)
+
+	got := ArtifactKey(database, backupID, true)
+	want := "backups/app_production/2026-09-05T03-00-12Z-a3f9.dump.gz.age"
+
+	if got != want {
+		t.Errorf("ArtifactKey(encrypted) = %q, want %q", got, want)
 	}
 }

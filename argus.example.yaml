@@ -4,3 +4,16 @@
 storage:
   local:
     path: ./argus-data
+
+# Optional. When present, artifacts are encrypted to this age recipient.
+#
+# A recipient is a public key, so it is safe in this file. Keep the matching
+# identity somewhere else entirely: that is the point of encrypting this way,
+# since a server that is compromised can then write new backups but cannot
+# read back the ones it already made.
+#
+# Generate a pair with:
+#   age-keygen -o argus-identity.txt
+#
+# encryption:
+#   recipient: age1...

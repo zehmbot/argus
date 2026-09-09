@@ -19,9 +19,10 @@ const (
 )
 
 const (
-	backupsPrefix     = "backups"
-	artifactExtension = ".dump.gz"
-	manifestExtension = ".json"
+	backupsPrefix      = "backups"
+	artifactExtension  = ".dump.gz"
+	encryptedExtension = ".age"
+	manifestExtension  = ".json"
 )
 
 // Manifest describes one backup. It is written to object storage alongside
@@ -54,7 +55,8 @@ type Artifact struct {
 	SHA256      string `json:"sha256"`
 	Compression string `json:"compression"`
 	// EncryptionRecipient is the age public key the artifact was encrypted
-	// to. Empty until encryption exists.
+	// to, empty when encryption is not configured. Recording it means a
+	// restore can say which key it needs rather than failing opaquely.
 	EncryptionRecipient string `json:"encryption_recipient,omitempty"`
 }
 
@@ -115,9 +117,16 @@ func NewID(t time.Time) (string, error) {
 	return t.UTC().Format("2006-01-02T15-04-05Z") + "-" + hex.EncodeToString(suffix[:]), nil
 }
 
-// ArtifactKey returns the object key of a backup's artifact.
-func ArtifactKey(database, backupID string) string {
-	return path.Join(backupsPrefix, database, backupID+artifactExtension)
+// ArtifactKey returns the object key of a backup's artifact. encrypted adds
+// the .age suffix, so that the key states what the object actually is and a
+// human reading the bucket can tell encrypted backups from plain ones.
+func ArtifactKey(database, backupID string, encrypted bool) string {
+	name := backupID + artifactExtension
+	if encrypted {
+		name += encryptedExtension
+	}
+
+	return path.Join(backupsPrefix, database, name)
 }
 
 // ManifestKey returns the object key of a backup's manifest, stored

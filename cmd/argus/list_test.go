@@ -33,7 +33,7 @@ func seedManifest(t *testing.T, storageRoot, backupID string, createdAt time.Tim
 		CreatedAt: createdAt,
 		Source:    manifest.Source{Host: "db.internal", Database: testDatabase},
 		Artifact: manifest.Artifact{
-			ObjectKey:   manifest.ArtifactKey(testDatabase, backupID),
+			ObjectKey:   manifest.ArtifactKey(testDatabase, backupID, false),
 			SizeBytes:   size,
 			SHA256:      "abc123",
 			Compression: "gzip",
