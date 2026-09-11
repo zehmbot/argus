@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 )
 
 const version = "0.1.0"
@@ -45,6 +46,7 @@ func main() {
 	}
 
 	ctx := context.Background()
+	args := os.Args[2:]
 
 	switch os.Args[1] {
 	case "version":
@@ -52,7 +54,7 @@ func main() {
 
 	case "backup":
 		fs, configPath := commandFlags("backup")
-		parseFlags(fs)
+		parseFlags(fs, args)
 
 		if err := runBackup(ctx, *configPath); err != nil {
 			fail(err)
@@ -61,9 +63,30 @@ func main() {
 	case "list":
 		fs, configPath := commandFlags("list")
 		asJSON := fs.Bool("json", false, "print the manifests as JSON")
-		parseFlags(fs)
+		parseFlags(fs, args)
 
 		if err := runList(ctx, *configPath, *asJSON, os.Stdout); err != nil {
+			fail(err)
+		}
+
+	case "restore":
+		// The documented form puts the backup id before the flags, and Go's
+		// flag package stops parsing at the first non-flag argument. Take the
+		// id off the front first so both orders work.
+		var backupID string
+		if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+			backupID, args = args[0], args[1:]
+		}
+
+		fs, configPath := commandFlags("restore")
+		target := fs.String("target", "", "connection string of the database to restore into")
+		parseFlags(fs, args)
+
+		if backupID == "" {
+			backupID = fs.Arg(0)
+		}
+
+		if err := runRestore(ctx, *configPath, backupID, *target); err != nil {
 			fail(err)
 		}
 
@@ -84,8 +107,8 @@ func commandFlags(name string) (*flag.FlagSet, *string) {
 	return fs, configPath
 }
 
-func parseFlags(fs *flag.FlagSet) {
-	if err := fs.Parse(os.Args[2:]); err != nil {
+func parseFlags(fs *flag.FlagSet, args []string) {
+	if err := fs.Parse(args); err != nil {
 		os.Exit(exitConfig)
 	}
 }
@@ -99,8 +122,9 @@ func usage() {
 	fmt.Fprint(os.Stderr, `usage: argus <command> [flags]
 
 commands:
-  backup [--config argus.yaml]          back up the configured database
-  list   [--config argus.yaml] [--json] list the backups in storage
-  version                               print the argus version
+  backup  [--config argus.yaml]                     back up the configured database
+  list    [--config argus.yaml] [--json]            list the backups in storage
+  restore <backup-id> --target postgres://...       restore a backup into a database
+  version                                           print the argus version
 `)
 }
