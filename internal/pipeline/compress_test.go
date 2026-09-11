@@ -47,3 +47,33 @@ func gunzip(t *testing.T, b []byte) []byte {
 
 	return got
 }
+
+func TestCompressDecompress_RoundTrip(t *testing.T) {
+	input := bytes.Repeat([]byte("argus backup payload "), 512)
+
+	var compressed bytes.Buffer
+	if err := Compress(&compressed, bytes.NewReader(input)); err != nil {
+		t.Fatalf("Compress() error = %v", err)
+	}
+
+	r, err := Decompress(bytes.NewReader(compressed.Bytes()))
+	if err != nil {
+		t.Fatalf("Decompress() error = %v", err)
+	}
+	defer r.Close()
+
+	got, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("reading decompressed data: %v", err)
+	}
+
+	if !bytes.Equal(got, input) {
+		t.Error("round trip changed the data")
+	}
+}
+
+func TestDecompress_NotGzip(t *testing.T) {
+	if _, err := Decompress(bytes.NewReader([]byte("this is not gzip"))); err == nil {
+		t.Error("Decompress() error = nil, want error")
+	}
+}

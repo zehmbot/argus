@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"filippo.io/age"
@@ -262,5 +263,65 @@ func TestS3Credentials_Missing(t *testing.T) {
 				t.Error("S3Credentials() error = nil, want error")
 			}
 		})
+	}
+}
+
+func TestAgeIdentity(t *testing.T) {
+	id, err := age.GenerateX25519Identity()
+	if err != nil {
+		t.Fatalf("GenerateX25519Identity() error = %v", err)
+	}
+
+	// Trailing whitespace is easy to pick up when a key is pasted into an
+	// environment file, and is not a reason to fail a restore.
+	t.Setenv("ARGUS_AGE_IDENTITY", id.String()+"\n")
+
+	got, err := AgeIdentity()
+	if err != nil {
+		t.Fatalf("AgeIdentity() error = %v", err)
+	}
+	if got == nil {
+		t.Fatal("AgeIdentity() = nil, want an identity")
+	}
+}
+
+func TestAgeIdentity_Invalid(t *testing.T) {
+	cases := []struct {
+		name  string
+		value string
+	}{
+		{name: "unset", value: ""},
+		{name: "not a key", value: "hunter2"},
+		{name: "a recipient rather than an identity", value: testRecipient(t)},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("ARGUS_AGE_IDENTITY", tc.value)
+
+			if _, err := AgeIdentity(); err == nil {
+				t.Error("AgeIdentity() error = nil, want error")
+			}
+		})
+	}
+}
+
+// A parse failure must not echo the key material it was handed.
+func TestAgeIdentity_ErrorOmitsKey(t *testing.T) {
+	id, err := age.GenerateX25519Identity()
+	if err != nil {
+		t.Fatalf("GenerateX25519Identity() error = %v", err)
+	}
+
+	// A real key with one character removed: malformed, but still secret.
+	broken := id.String()[:len(id.String())-1]
+	t.Setenv("ARGUS_AGE_IDENTITY", broken)
+
+	_, err = AgeIdentity()
+	if err == nil {
+		t.Fatal("AgeIdentity() error = nil, want error")
+	}
+	if strings.Contains(err.Error(), broken) || strings.Contains(err.Error(), "AGE-SECRET-KEY") {
+		t.Errorf("AgeIdentity() error leaks key material: %v", err)
 	}
 }

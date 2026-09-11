@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"filippo.io/age"
 	"gopkg.in/yaml.v3"
@@ -16,6 +17,7 @@ const (
 	sourceDSNEnvVar   = "ARGUS_DATABASE_URL"
 	s3AccessKeyEnvVar = "ARGUS_S3_ACCESS_KEY_ID"
 	s3SecretKeyEnvVar = "ARGUS_S3_SECRET_ACCESS_KEY"
+	ageIdentityEnvVar = "ARGUS_AGE_IDENTITY"
 )
 
 // Config is the root of argus.yaml. Only the fields the current phase needs
@@ -163,4 +165,27 @@ func (s StorageConfig) validate() error {
 	}
 
 	return nil
+}
+
+// AgeIdentity returns the private key used to decrypt artifacts, read from
+// the environment.
+//
+// It is deliberately absent from the config file and from everything backup
+// touches. Only the commands that read artifacts back need it, which is what
+// lets a compromised backup host write new backups without being able to
+// read the ones it already made.
+func AgeIdentity() (*age.X25519Identity, error) {
+	raw := os.Getenv(ageIdentityEnvVar)
+	if raw == "" {
+		return nil, fmt.Errorf("%s environment variable is not set", ageIdentityEnvVar)
+	}
+
+	identity, err := age.ParseX25519Identity(strings.TrimSpace(raw))
+	if err != nil {
+		// The error from the parser can quote the key it was given, so it is
+		// not wrapped: nothing derived from a private key belongs in output.
+		return nil, fmt.Errorf("%s is not a valid age identity", ageIdentityEnvVar)
+	}
+
+	return identity, nil
 }

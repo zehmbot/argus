@@ -28,3 +28,18 @@ func Compress(dst io.Writer, src io.Reader) error {
 
 	return nil
 }
+
+// Decompress returns a reader over the gunzipped contents of src. The caller
+// must close it.
+//
+// It sits beside Compress for the same reason Decrypt sits beside Encrypt: a
+// path that writes backups without the path that reads them back is how a
+// project ends up with a bucket full of artifacts nobody can open.
+func Decompress(src io.Reader) (io.ReadCloser, error) {
+	gz, err := gzip.NewReader(src)
+	if err != nil {
+		return nil, fmt.Errorf("decompressing: %w", err)
+	}
+
+	return gz, nil
+}
