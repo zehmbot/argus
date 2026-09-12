@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path"
 	"path/filepath"
@@ -86,7 +87,11 @@ func runRestore(ctx context.Context, configPath, backupID, targetDSN string) err
 		return err
 	}
 
-	fmt.Printf("restored backup %s into %s on %s\n", m.BackupID, target.Database, target.Host)
+	slog.Info("restore complete",
+		"backup_id", m.BackupID,
+		"target_database", target.Database,
+		"target_host", target.Host,
+	)
 
 	return nil
 }

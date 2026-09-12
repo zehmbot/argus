@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path"
 	"path/filepath"
@@ -103,6 +104,13 @@ func runVerify(ctx context.Context, configPath, backupID string, latest bool, ou
 	if err := manifest.Write(ctx, backend, m); err != nil {
 		return fmt.Errorf("%w: %w", errStorage, err)
 	}
+
+	slog.Info("verification complete",
+		"backup_id", m.BackupID,
+		"status", m.Verification.Status,
+		"restored_pg_version", result.RestoredPGVersion,
+		"checks", len(result.Checks),
+	)
 
 	if err := printVerification(out, m); err != nil {
 		return err
