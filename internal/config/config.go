@@ -8,6 +8,7 @@ import (
 	"filippo.io/age"
 	"gopkg.in/yaml.v3"
 
+	"github.com/zehmbot/argus/internal/retention"
 	"github.com/zehmbot/argus/internal/verify"
 )
 
@@ -28,6 +29,7 @@ type Config struct {
 	Storage      StorageConfig       `yaml:"storage"`
 	Encryption   *EncryptionConfig   `yaml:"encryption"`
 	Verification *VerificationConfig `yaml:"verification"`
+	Retention    *RetentionConfig    `yaml:"retention"`
 }
 
 type StorageConfig struct {
@@ -110,6 +112,12 @@ func (c *Config) Recipient() (age.Recipient, error) {
 func (c *Config) validate() error {
 	if err := c.Storage.validate(); err != nil {
 		return err
+	}
+
+	if c.Retention != nil {
+		if err := c.Retention.validate(); err != nil {
+			return err
+		}
 	}
 
 	if c.Verification != nil {
@@ -241,6 +249,54 @@ func (v *VerificationConfig) validate() error {
 	// rows it had, which is not a tolerance but a blindfold.
 	if *v.RowCountTolerance < 0 || *v.RowCountTolerance > 1 {
 		return fmt.Errorf("verification.row_count_tolerance must be between 0 and 1, got %v", *v.RowCountTolerance)
+	}
+
+	return nil
+}
+
+// RetentionConfig overrides how many backups prune keeps.
+//
+// Every field is a pointer so that an explicit 0, which disables that rule
+// entirely, is distinguishable from the field being absent, which leaves the
+// default in place. Without that, writing only `daily: 30` would silently
+// switch the weekly and monthly rules off.
+type RetentionConfig struct {
+	Daily   *int `yaml:"daily"`
+	Weekly  *int `yaml:"weekly"`
+	Monthly *int `yaml:"monthly"`
+}
+
+// RetentionPolicy returns the configured policy, falling back to the default
+// for anything not set.
+func (c *Config) RetentionPolicy() retention.Policy {
+	policy := retention.Default
+
+	if c.Retention == nil {
+		return policy
+	}
+
+	if c.Retention.Daily != nil {
+		policy.Daily = *c.Retention.Daily
+	}
+	if c.Retention.Weekly != nil {
+		policy.Weekly = *c.Retention.Weekly
+	}
+	if c.Retention.Monthly != nil {
+		policy.Monthly = *c.Retention.Monthly
+	}
+
+	return policy
+}
+
+func (r *RetentionConfig) validate() error {
+	for name, value := range map[string]*int{
+		"retention.daily":   r.Daily,
+		"retention.weekly":  r.Weekly,
+		"retention.monthly": r.Monthly,
+	} {
+		if value != nil && *value < 0 {
+			return fmt.Errorf("%s must not be negative, got %d", name, *value)
+		}
 	}
 
 	return nil
