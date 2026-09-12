@@ -7,6 +7,8 @@ import (
 
 	"filippo.io/age"
 	"gopkg.in/yaml.v3"
+
+	"github.com/zehmbot/argus/internal/verify"
 )
 
 // Every secret is read from the environment, never from the config file.
@@ -23,8 +25,9 @@ const (
 // Config is the root of argus.yaml. Only the fields the current phase needs
 // exist here; S3 and retention settings are added as later phases need them.
 type Config struct {
-	Storage    StorageConfig     `yaml:"storage"`
-	Encryption *EncryptionConfig `yaml:"encryption"`
+	Storage      StorageConfig       `yaml:"storage"`
+	Encryption   *EncryptionConfig   `yaml:"encryption"`
+	Verification *VerificationConfig `yaml:"verification"`
 }
 
 type StorageConfig struct {
@@ -109,6 +112,12 @@ func (c *Config) validate() error {
 		return err
 	}
 
+	if c.Verification != nil {
+		if err := c.Verification.validate(); err != nil {
+			return err
+		}
+	}
+
 	if c.Encryption != nil {
 		if c.Encryption.Recipient == "" {
 			return fmt.Errorf("encryption.recipient is required when encryption is configured")
@@ -188,4 +197,51 @@ func AgeIdentity() (*age.X25519Identity, error) {
 	}
 
 	return identity, nil
+}
+
+// VerificationConfig tunes what counts as a successful verification.
+type VerificationConfig struct {
+	// RowCountTolerance is the fraction by which a restored table's row
+	// count may differ from the count recorded at backup time. A pointer so
+	// that an explicit 0, meaning exact counts, is distinguishable from the
+	// field being absent.
+	RowCountTolerance *float64 `yaml:"row_count_tolerance"`
+
+	// SmokeQuery is an optional query run against the restored database.
+	// It must succeed and return at least one row, which lets an operator
+	// assert something about their own data that argus cannot know.
+	SmokeQuery string `yaml:"smoke_query"`
+}
+
+// RowCountTolerance returns the configured tolerance, or the default when
+// none is set.
+func (c *Config) RowCountTolerance() float64 {
+	if c.Verification == nil || c.Verification.RowCountTolerance == nil {
+		return verify.DefaultRowCountTolerance
+	}
+
+	return *c.Verification.RowCountTolerance
+}
+
+// SmokeQuery returns the configured smoke query, or empty when none is set.
+func (c *Config) SmokeQuery() string {
+	if c.Verification == nil {
+		return ""
+	}
+
+	return c.Verification.SmokeQuery
+}
+
+func (v *VerificationConfig) validate() error {
+	if v.RowCountTolerance == nil {
+		return nil
+	}
+
+	// A tolerance above 1 would accept a table coming back with twice the
+	// rows it had, which is not a tolerance but a blindfold.
+	if *v.RowCountTolerance < 0 || *v.RowCountTolerance > 1 {
+		return fmt.Errorf("verification.row_count_tolerance must be between 0 and 1, got %v", *v.RowCountTolerance)
+	}
+
+	return nil
 }

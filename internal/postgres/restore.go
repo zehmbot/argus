@@ -9,6 +9,18 @@ import (
 	"strings"
 )
 
+// RestoreOptions adjust how an archive is loaded.
+type RestoreOptions struct {
+	// NoOwner skips the dump's ownership statements.
+	//
+	// A dump names the roles that owned each object. Restoring it into a
+	// cluster where those roles do not exist fails, which is exactly the
+	// case when verifying into a throwaway container. A restore into a real
+	// cluster should preserve ownership, so this is off by default and
+	// turned on only by verification.
+	NoOwner bool
+}
+
 // RestoreArgs returns the pg_restore arguments for loading an archive into
 // the database at dsn.
 //
@@ -25,17 +37,23 @@ import (
 // The cost is that a single transaction rules out parallel restore and holds
 // its locks for the whole run. For a tool whose job is a restore you can
 // trust, that is the right side of the trade.
-func RestoreArgs(dsn string) []string {
-	return []string{
+func RestoreArgs(dsn string, opts RestoreOptions) []string {
+	args := []string{
 		"--dbname=" + dsn,
 		"--single-transaction",
 		"--exit-on-error",
 	}
+
+	if opts.NoOwner {
+		args = append(args, "--no-owner")
+	}
+
+	return args
 }
 
 // Restore runs pg_restore against dsn, reading the archive from r.
-func Restore(ctx context.Context, dsn string, r io.Reader) error {
-	cmd := exec.CommandContext(ctx, "pg_restore", RestoreArgs(dsn)...)
+func Restore(ctx context.Context, dsn string, r io.Reader, opts RestoreOptions) error {
+	cmd := exec.CommandContext(ctx, "pg_restore", RestoreArgs(dsn, opts)...)
 	cmd.Stdin = r
 
 	var stderr bytes.Buffer
