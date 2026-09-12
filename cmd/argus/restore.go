@@ -79,7 +79,10 @@ func runRestore(ctx context.Context, configPath, backupID, targetDSN string) err
 		return err
 	}
 
-	if err := loadInto(ctx, artifactPath, targetDSN, identity); err != nil {
+	// A restore into a real cluster keeps the ownership the dump records;
+	// only verification, whose throwaway database has none of those roles,
+	// drops it.
+	if err := loadInto(ctx, artifactPath, targetDSN, identity, postgres.RestoreOptions{}); err != nil {
 		return err
 	}
 
@@ -157,7 +160,7 @@ func download(ctx context.Context, backend storage.Backend, m manifest.Manifest,
 
 // loadInto decrypts and decompresses the artifact straight into pg_restore,
 // so the plaintext dump is never written to disk.
-func loadInto(ctx context.Context, artifactPath, targetDSN string, identity *age.X25519Identity) error {
+func loadInto(ctx context.Context, artifactPath, targetDSN string, identity *age.X25519Identity, opts postgres.RestoreOptions) error {
 	f, err := os.Open(artifactPath)
 	if err != nil {
 		return fmt.Errorf("opening artifact: %w", err)
@@ -179,5 +182,5 @@ func loadInto(ctx context.Context, artifactPath, targetDSN string, identity *age
 	}
 	defer gz.Close()
 
-	return postgres.Restore(ctx, targetDSN, gz)
+	return postgres.Restore(ctx, targetDSN, gz, opts)
 }

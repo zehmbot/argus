@@ -36,3 +36,19 @@ storage:
 #
 # The identity from that file is what restore needs, passed as
 # ARGUS_AGE_IDENTITY. backup never sees it.
+
+# Optional. Tunes what counts as a successful verification.
+#
+# verification:
+#   # How far a restored table's row count may differ from the count the
+#   # backup recorded, as a fraction. Defaults to 0.01.
+#   #
+#   # Not zero by default: counts are read just before pg_dump starts, and
+#   # pg_dump then runs in its own consistent snapshot, so on a database
+#   # being written to the two legitimately disagree.
+#   row_count_tolerance: 0.01
+#
+#   # An optional query run against the restored database. It must succeed
+#   # and return at least one row. argus can check that the shape and size
+#   # of the data came back; only you can say whether it means anything.
+#   smoke_query: "SELECT 1 FROM users WHERE email IS NOT NULL LIMIT 1"

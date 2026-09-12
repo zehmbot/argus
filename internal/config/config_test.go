@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"filippo.io/age"
+
+	"github.com/zehmbot/argus/internal/verify"
 )
 
 func writeConfig(t *testing.T, contents string) string {
@@ -323,5 +325,85 @@ func TestAgeIdentity_ErrorOmitsKey(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), broken) || strings.Contains(err.Error(), "AGE-SECRET-KEY") {
 		t.Errorf("AgeIdentity() error leaks key material: %v", err)
+	}
+}
+
+func TestRowCountTolerance_Default(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{name: "no verification block", body: "storage:\n  local:\n    path: /var/lib/argus\n"},
+		{name: "block without a tolerance", body: "storage:\n  local:\n    path: /var/lib/argus\nverification:\n  smoke_query: SELECT 1\n"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, err := Load(writeConfig(t, tc.body))
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+
+			if got := cfg.RowCountTolerance(); got != verify.DefaultRowCountTolerance {
+				t.Errorf("RowCountTolerance() = %v, want the default %v", got, verify.DefaultRowCountTolerance)
+			}
+		})
+	}
+}
+
+// An explicit zero means exact counts, and must not be mistaken for the
+// field being absent.
+func TestRowCountTolerance_ExplicitZero(t *testing.T) {
+	cfg, err := Load(writeConfig(t, "storage:\n  local:\n    path: /var/lib/argus\nverification:\n  row_count_tolerance: 0\n"))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if got := cfg.RowCountTolerance(); got != 0 {
+		t.Errorf("RowCountTolerance() = %v, want 0", got)
+	}
+}
+
+func TestRowCountTolerance_Set(t *testing.T) {
+	cfg, err := Load(writeConfig(t, "storage:\n  local:\n    path: /var/lib/argus\nverification:\n  row_count_tolerance: 0.05\n"))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if got := cfg.RowCountTolerance(); got != 0.05 {
+		t.Errorf("RowCountTolerance() = %v, want 0.05", got)
+	}
+}
+
+func TestLoad_ToleranceOutOfRange(t *testing.T) {
+	for _, value := range []string{"-0.1", "1.5"} {
+		t.Run(value, func(t *testing.T) {
+			body := "storage:\n  local:\n    path: /var/lib/argus\nverification:\n  row_count_tolerance: " + value + "\n"
+
+			if _, err := Load(writeConfig(t, body)); err == nil {
+				t.Error("Load() error = nil, want a rejected tolerance")
+			}
+		})
+	}
+}
+
+func TestSmokeQuery(t *testing.T) {
+	const query = "SELECT 1 FROM users LIMIT 1"
+
+	cfg, err := Load(writeConfig(t, "storage:\n  local:\n    path: /var/lib/argus\nverification:\n  smoke_query: "+query+"\n"))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if got := cfg.SmokeQuery(); got != query {
+		t.Errorf("SmokeQuery() = %q, want %q", got, query)
+	}
+
+	absent, err := Load(writeConfig(t, "storage:\n  local:\n    path: /var/lib/argus\n"))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got := absent.SmokeQuery(); got != "" {
+		t.Errorf("SmokeQuery() = %q, want empty", got)
 	}
 }
