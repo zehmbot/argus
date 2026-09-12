@@ -3,12 +3,13 @@ package postgres
 import "testing"
 
 func TestDumpArgs(t *testing.T) {
-	got := DumpArgs("postgres://user:pass@localhost:5432/app", "/tmp/out.dump")
+	got := DumpArgs("postgres://user:pass@localhost:5432/app")
 
+	// No --file: the dump goes to stdout so the pipeline can consume it as
+	// it is produced.
 	want := []string{
 		"--format=custom",
 		"--compress=0",
-		"--file=/tmp/out.dump",
 		"postgres://user:pass@localhost:5432/app",
 	}
 
