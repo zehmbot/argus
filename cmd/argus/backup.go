@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"time"
 
 	"github.com/zehmbot/argus/internal/config"
@@ -122,7 +123,14 @@ func runBackup(ctx context.Context, configPath string) error {
 		return fmt.Errorf("%w: %w", errStorage, err)
 	}
 
-	fmt.Printf("wrote backup %s (%d bytes) to %s\n", backupID, result.Size, key)
+	slog.Info("backup complete",
+		"backup_id", backupID,
+		"database", conn.Database,
+		"object_key", key,
+		"size_bytes", result.Size,
+		"duration_seconds", m.DurationSeconds,
+		"encrypted", recipient != nil,
+	)
 
 	return nil
 }

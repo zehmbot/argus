@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"text/tabwriter"
 	"time"
 
@@ -59,6 +60,8 @@ func runPrune(ctx context.Context, configPath string, apply bool, out io.Writer)
 	}
 
 	if !apply {
+		slog.Info("prune dry run", "kept", len(plan.Keep), "would_delete", len(plan.Delete))
+
 		if len(plan.Delete) > 0 {
 			fmt.Fprintf(out, "\nnothing was deleted. Re-run with --apply to carry this out.\n")
 		}
@@ -66,7 +69,13 @@ func runPrune(ctx context.Context, configPath string, apply bool, out io.Writer)
 		return nil
 	}
 
-	return deleteBackups(ctx, backend, plan.Delete, out)
+	if err := deleteBackups(ctx, backend, plan.Delete, out); err != nil {
+		return err
+	}
+
+	slog.Info("prune complete", "kept", len(plan.Keep), "deleted", len(plan.Delete))
+
+	return nil
 }
 
 // deleteBackups removes each backup, manifest first.
