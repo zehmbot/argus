@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/zehmbot/argus/internal/retention"
 	"github.com/zehmbot/argus/internal/verify"
 )
 
@@ -37,7 +38,10 @@ func exitCodeFor(err error) int {
 		return exitConfig
 	case errors.Is(err, errStorage):
 		return exitStorage
-	case errors.Is(err, verify.ErrFailed):
+	case errors.Is(err, verify.ErrFailed), errors.Is(err, retention.ErrNoVerifiedBackup):
+		// Prune refusing because nothing verified would survive is the same
+		// alarm as a verification failing: there is no backup anyone has
+		// shown to restore.
 		return exitVerify
 	default:
 		return exitBackup
@@ -115,6 +119,20 @@ func main() {
 			fail(err)
 		}
 
+	case "prune":
+		fs, configPath := commandFlags("prune")
+		apply := fs.Bool("apply", false, "actually delete the backups the policy drops")
+		dryRun := fs.Bool("dry-run", false, "report what would be deleted (the default)")
+		parseFlags(fs, args)
+
+		if *apply && *dryRun {
+			fail(fmt.Errorf("%w: --apply and --dry-run contradict each other", errConfig))
+		}
+
+		if err := runPrune(ctx, *configPath, *apply, os.Stdout); err != nil {
+			fail(err)
+		}
+
 	default:
 		usage()
 		os.Exit(exitConfig)
@@ -151,6 +169,7 @@ commands:
   list    [--config argus.yaml] [--json]            list the backups in storage
   restore <backup-id> --target postgres://...       restore a backup into a database
   verify  <backup-id> | --latest                    restore a backup and check it
+  prune   [--apply]                                 apply the retention policy
   version                                           print the argus version
 `)
 }

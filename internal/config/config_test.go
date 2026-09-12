@@ -8,6 +8,7 @@ import (
 
 	"filippo.io/age"
 
+	"github.com/zehmbot/argus/internal/retention"
 	"github.com/zehmbot/argus/internal/verify"
 )
 
@@ -405,5 +406,61 @@ func TestSmokeQuery(t *testing.T) {
 	}
 	if got := absent.SmokeQuery(); got != "" {
 		t.Errorf("SmokeQuery() = %q, want empty", got)
+	}
+}
+
+func TestRetentionPolicy_Default(t *testing.T) {
+	cfg, err := Load(writeConfig(t, "storage:\n  local:\n    path: /var/lib/argus\n"))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if got := cfg.RetentionPolicy(); got != retention.Default {
+		t.Errorf("RetentionPolicy() = %+v, want the default %+v", got, retention.Default)
+	}
+}
+
+// Setting one rule must not silently switch the others off.
+func TestRetentionPolicy_PartialOverride(t *testing.T) {
+	cfg, err := Load(writeConfig(t, "storage:\n  local:\n    path: /var/lib/argus\nretention:\n  daily: 30\n"))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	got := cfg.RetentionPolicy()
+
+	if got.Daily != 30 {
+		t.Errorf("Daily = %d, want 30", got.Daily)
+	}
+	if got.Weekly != retention.Default.Weekly {
+		t.Errorf("Weekly = %d, want the default %d", got.Weekly, retention.Default.Weekly)
+	}
+	if got.Monthly != retention.Default.Monthly {
+		t.Errorf("Monthly = %d, want the default %d", got.Monthly, retention.Default.Monthly)
+	}
+}
+
+// An explicit zero disables a rule, and must not read as "unset".
+func TestRetentionPolicy_ExplicitZero(t *testing.T) {
+	cfg, err := Load(writeConfig(t, "storage:\n  local:\n    path: /var/lib/argus\nretention:\n  daily: 1\n  weekly: 0\n  monthly: 0\n"))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	want := retention.Policy{Daily: 1, Weekly: 0, Monthly: 0}
+	if got := cfg.RetentionPolicy(); got != want {
+		t.Errorf("RetentionPolicy() = %+v, want %+v", got, want)
+	}
+}
+
+func TestLoad_NegativeRetention(t *testing.T) {
+	for _, field := range []string{"daily", "weekly", "monthly"} {
+		t.Run(field, func(t *testing.T) {
+			body := "storage:\n  local:\n    path: /var/lib/argus\nretention:\n  " + field + ": -1\n"
+
+			if _, err := Load(writeConfig(t, body)); err == nil {
+				t.Error("Load() error = nil, want a rejected negative count")
+			}
+		})
 	}
 }

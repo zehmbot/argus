@@ -52,3 +52,14 @@ storage:
 #   # and return at least one row. argus can check that the shape and size
 #   # of the data came back; only you can say whether it means anything.
 #   smoke_query: "SELECT 1 FROM users WHERE email IS NOT NULL LIMIT 1"
+
+# Optional. How many backups prune keeps. Anything left out keeps its
+# default, so setting only `daily` does not switch the other rules off.
+#
+# Periods are counted from the backups that exist, not from today: a system
+# that stopped backing up does not lose its history all at once.
+#
+# retention:
+#   daily: 7
+#   weekly: 4
+#   monthly: 6
