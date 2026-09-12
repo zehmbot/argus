@@ -99,7 +99,7 @@ func TestEncode_OmitsEmptyVerificationFields(t *testing.T) {
 	}
 
 	got := buf.String()
-	for _, field := range []string{"verified_at", "restored_pg_version", "checks", "encryption_recipient"} {
+	for _, field := range []string{"verified_at", "restored_pg_version", "checks", "encryption_recipient", "detail"} {
 		if strings.Contains(got, field) {
 			t.Errorf("Encode() emitted empty field %q:\n%s", field, got)
 		}

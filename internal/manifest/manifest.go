@@ -72,6 +72,10 @@ type Verification struct {
 type Check struct {
 	Name   string `json:"name"`
 	Passed bool   `json:"passed"`
+	// Detail says why a check failed. "row_counts_within_tolerance: false"
+	// on its own does not tell an operator which table drifted, which is the
+	// only thing they want to know at that point.
+	Detail string `json:"detail,omitempty"`
 }
 
 // Encode writes m as indented JSON. Indented because a human debugging a
