@@ -18,7 +18,10 @@ jobs:
 
       - run: go build ./...
 
-      - run: go test ./...
+      # -race because the backup pipeline runs the dump, compression,
+      # encryption and upload concurrently. It needs cgo, which the Linux
+      # runner has and a Windows development machine typically does not.
+      - run: go test -race ./...
 
   integration:
     runs-on: ubuntu-latest

@@ -20,7 +20,11 @@ import (
 )
 
 const (
-	minioImage  = "minio/minio:RELEASE.2024-01-16T16-07-38Z"
+	// quay.io rather than Docker Hub: minio/minio there now requires
+	// authentication, so an anonymous pull on a CI runner is refused with
+	// "pull access denied". MinIO publishes the same releases to quay.io,
+	// which serves them without credentials.
+	minioImage  = "quay.io/minio/minio:RELEASE.2024-01-16T16-07-38Z"
 	testBucket  = "argus-test"
 	minioUser   = "argus"
 	minioSecret = "argus-secret-key"
